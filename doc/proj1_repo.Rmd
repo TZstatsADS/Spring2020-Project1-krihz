@@ -1,10 +1,10 @@
 ---
-title: "How do songs change in the past 50 years: in a lyric side"
+title: "1970s-2010s: How Has Music Changed Over the 6 Decades?"
 output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = FALSE)
 ```
 
 
@@ -26,11 +26,9 @@ library(wordcloud)
 library(shiny)
 ```
 
-# Load the data to be cleaned and processed
 
-```{r}
-# load lyrics data
-load('../data/lyrics.RData') 
+```{r load data, warning=FALSE, message=FALSE}
+load('../output/processed_lyrics.RData') 
 # load artist information
 dt_artist <- fread('../data/artists.csv') 
 lyrics_list <- c("Folk", "R&B", "Electronic", "Jazz", "Indie", "Country", "Rock","Metal", "Pop","Hip-Hop","Other")
@@ -41,9 +39,9 @@ word_tibble <- tidy(corpus) %>%
   mutate(id = row_number()) %>%
   unnest_tokens(word, text)
 ```
-
-# the number of songs change over time
-```{r}
+## 1. Basic Descriptive Analysis
+### a. The Development of Music Industry: in terms of the total number of songs per decade
+```{r amount of songs, warning=FALSE, message=FALSE}
 library(ggplot2)
 dt_lyrics <- dt_lyrics %>%
   mutate(time = case_when(
@@ -63,8 +61,11 @@ g1 <- dt_lyrics %>%
   theme(plot.title = element_text(hjust = 0.5))
 g1
 ```
-# Proportion of different genre change over time
-```{r}
+
+  We can see, in the past decades, the amount of songs written per decade has growed constantly. In 2000s, the amount of songs growed rapidly. It may because the expansion of music industry, economic growth, lower barrier of entry into the music business(especially with the development of the Internet). Also, there may be missing data in the previous decades. (It's obvious that the data of 2010s is not complete because the latest song in this dataset is released in 2015.)
+
+### b. The Changing Trend of Music Genre: in terms of the proportion of each genre
+```{r proportion,warning=FALSE, message=FALSE}
 g2 <- filter(dt_lyrics,year>=1970) %>%
   group_by(time,genre) %>%
   summarise(n = n()) %>%
@@ -78,8 +79,11 @@ g2 <- filter(dt_lyrics,year>=1970) %>%
   theme(plot.title = element_text(hjust = 0.5))
 g2
 ```
-# The distribution of length of lyric across time
-```{r}
+  
+  Rock music occupied most of the music market in 1970s-1990s. In 2000s and 2010s, the proportion of Rock music decreased and the proportion of Pop music increased. Other music genre are relatively stable.
+
+### c. Variation in the length of lyrics: by genre and time
+```{r length, warning=FALSE, message=FALSE}
 word_count <- group_by(word_tibble,id) %>%
   summarise(count = n()) %>%
   left_join(select(dt_lyrics,id,time,genre),by = "id") %>%
@@ -95,9 +99,11 @@ g3 <- ggplot(word_count,aes(x = time, y = count)) +
 g3
 ```
 
-# Diveriity of word change over time (in term of stemmed word)
-# sina plot
-```{r}
+  For most genre, the length of lyrics stay constant over time. More and more Hip-Hop, Metal, Pop and Rock music composers tend to write longer lyrics in some songs.
+
+### d. Diveriity of word: in term of stemmed word
+I use sina plot to depict the changes.
+```{r diversity, warning=FALSE,message=FALSE}
 word_diversity <- word_tibble %>%
   left_join(select(dt_lyrics,id,time,genre),by = "id") %>%
   filter(!is.na(time),
@@ -113,8 +119,11 @@ g4 <- ggplot(word_diversity, aes(x = time, y = div)) +
   theme(plot.title = element_text(hjust = 0.5))
 g4
 ```
-# by genre
-```{r}
+
+  From the plot, we know that the overall diversity of word used in lyrics grows over time.
+
+  By genre,
+```{r diversity genre, message=FALSE,warning=FALSE}
 g5 <- ggplot(word_diversity, aes(x = time, y = div)) +
   geom_sina(aes(color = time),size = 0.3) +
   labs(x = "Time", y = "Diversity of word in lyric",
@@ -124,10 +133,12 @@ g5 <- ggplot(word_diversity, aes(x = time, y = div)) +
   theme(plot.title = element_text(hjust = 0.5))
 g5
 ```
+  
+  From the plot by differenrt genre, we can see that the growing diversity of word used in Hip-Hop music contribute to the overall growing diversity.
 
-# word cloud - overview to each decade
-# calculate tf-tdf
-```{r}
+## 2. Word Frequency Variation: in terms of tf-idf
+### a. Visualization: bar plots and wordcloud of popular words in terms of tf-idf per decade
+```{r tf-idf,warning=FALSE,message=FALSE}
 word_tibble_c <- word_tibble %>%
   left_join(dt_lyrics %>% select(id,time,genre), by = "id") %>%
   na.omit()
@@ -141,9 +152,10 @@ word_tibble_c_time_tfidf <- word_tibble_c_time %>%
   ungroup()
 
 word_tibble_c_tg <- word_tibble_c %>%
-  left_join(dt_lyrics %>% select(id,genre), by = "id") %>%
+  left_join(dt_lyrics %>% select(id,genre), by = "id")
+word_tibble_c_tg$tg = paste(word_tibble_c_tg$time,word_tibble_c_tg$genre,sep = "-")
+word_tibble_c_tg <- word_tibble_c_tg %>%
   na.omit() %>%
-  mutate(tg = paste(time,genre,sep = "-")) %>%
   group_by(tg,word) %>%
   summarise(n = n())
 
@@ -153,8 +165,8 @@ word_tibble_c_tg_tfidf <- word_tibble_c_tg %>%
   arrange(tg,desc(tf)) %>%
   ungroup()
 ```
-# 1970s
-```{r}
+### 1970s
+```{r 1970s tf_idf bar, warning=FALSE,message=FALSE}
 g6 <- word_tibble_c_time_tfidf %>%
   filter(time == "1970s") %>%
   select(word,tf_idf) %>%
@@ -168,15 +180,22 @@ g6 <- word_tibble_c_time_tfidf %>%
   theme(plot.title = element_text(hjust = 0.5))
 g6
 ```
-```{r}
+  
+  From the barplot we can see the most popular words seem to relate to love songs. Compared to other decades, the word "lord" may imply that, there may be quite a few songs related to religion or express prayer to lord.
+
+```{r 1970s wordcloud, warning=FALSE, message=FALSE}
 g7 <- word_tibble_c_time_tfidf %>%
   filter(time == "1970s") %>%
   select(word,tf_idf) %>%
-  head(75) %>% wordcloud2()
-g7
+  head(60) 
+
+wordcloud(g7$word,g7$tf_idf,colors = brewer.pal(8,"Dark2"))
 ```
-# 1980s
-```{r}
+
+  From the wordcloud we can infer, in 1970s, more lyrics of love songs may write to female, compared to male.
+
+### 1980s
+```{r 1980s barplot, warning=FALSE, message=FALSE}
 g8 <- word_tibble_c_time_tfidf %>%
   filter(time == "1980s") %>%
   select(word,tf_idf) %>%
@@ -190,15 +209,22 @@ g8 <- word_tibble_c_time_tfidf %>%
   theme(plot.title = element_text(hjust = 0.5))
 g8
 ```
-```{r}
+  
+  From the barplot, we can see that the popolar words almost remain the same, mostly related to love songs. The frequency of "boy" increased, which may imply that in 1980s, the proportion of songs written to boys may relatively high compared to other decades.
+  
+```{r wordcloud 1980s, message=FALSE,warning=FALSE}
 g9 <- word_tibble_c_time_tfidf %>%
   filter(time == "1980s") %>%
   select(word,tf_idf) %>%
-  head(75) %>% wordcloud2()
-g9
+  head(60) 
+
+wordcloud(g9$word,g9$tf_idf,colors = brewer.pal(8,"Dark2"))
 ```
-# 1990s
-```{r}
+
+  The wordcloud agrees with the finding of the barplot. Besides, compared to 1970s, people use less words like lord or soul and the more popular words in the lyric tends to be encouraging.
+  
+### 1990s
+```{r barplot, warning=FALSE,message=FALSE}
 g10 <- word_tibble_c_time_tfidf %>%
   filter(time == "1990s") %>%
   select(word,tf_idf) %>%
@@ -212,15 +238,22 @@ g10 <- word_tibble_c_time_tfidf %>%
   theme(plot.title = element_text(hjust = 0.5))
 g10
 ```
-```{r}
+
+  The barplot remains almost the same like 1980s.
+  
+```{r wordcloud 1990s, warning= FALSE, message= FALSE}
 g11 <- word_tibble_c_time_tfidf %>%
   filter(time == "1990s") %>%
   select(word,tf_idf) %>%
-  head(75) %>% wordcloud2()
-g11
+  head(60) 
+
+wordcloud(g11$word,g11$tf_idf,colors = brewer.pal(8,"Dark2"))
 ```
-# 2000s
-```{r}
+
+  The wordcloud of 1990s is similar to the 1980s. We may conclude that the popular words in lyrics change a little in the two decades.
+  
+### 2000s
+```{r barplot 2000s, warning=FALSE,message = FALSE}
 g12 <- word_tibble_c_time_tfidf %>%
   filter(time == "2000s") %>%
   select(word,tf_idf) %>%
@@ -234,15 +267,23 @@ g12 <- word_tibble_c_time_tfidf %>%
   theme(plot.title = element_text(hjust = 0.5))
 g12
 ```
-```{r}
+
+  The barplot remains almost the same like 1980s and 1990s.
+
+```{r wordcloud 2000s, warning=FALSE, message=FALSE}
 g13 <- word_tibble_c_time_tfidf %>%
   filter(time == "2000s") %>%
   select(word,tf_idf) %>%
-  head(75) %>% wordcloud2()
-g13
+  head(60) 
+
+wordcloud(g13$word,g13$tf_idf,colors = brewer.pal(8,"Dark2"))
 ```
-# 2010s
-```{r}
+
+  The wordcloud of 2000s is similar to the 1980s and 1990s. We may conclude that the popular words in lyrics change a little in the three decades.
+
+
+### 2010s
+```{r barplot 2010s, warning=FALSE,message=FALSE}
 g14 <- word_tibble_c_time_tfidf %>%
   filter(time == "2010s") %>%
   select(word,tf_idf) %>%
@@ -256,16 +297,23 @@ g14 <- word_tibble_c_time_tfidf %>%
   theme(plot.title = element_text(hjust = 0.5))
 g14
 ```
-```{r}
+```{r 2000s worcloud,message=FALSE,warning=FALSE}
 g15 <- word_tibble_c_time_tfidf %>%
   filter(time == "2010s") %>%
   select(word,tf_idf) %>%
-  head(75) %>% wordcloud2()
-g15
+  head(60) 
+
+wordcloud(g15$word,g15$tf_idf,colors = brewer.pal(8,"Dark2"))
 ```
-shiny_app
-UI
-```{r}
+
+  The wordcloud of 2010s is similar to the last 3 decades. We may conclude that the popular words in lyrics change a little in the four decades.
+
+### b. Visulization with shiny_app
+ I built shiny_app to compare the difference of popular words in the lyric of different time and different genre.
+ In the shiny_app, there are two tab panel:
+  In the first tab panel, you can compare two bar plots of popular words in lyrics in any two decades (measured by tf_idf). 
+  In the second tab panel, you can compare two wordcloud of popular words in lyrics in any two decades and in any two genre, in terms of tf or tf_idf.
+```{r UI, warning= FALSE, message=FALSE}
 # Define UI for app that draws a histogram ----
 ui1 <- navbarPage(strong("Lyrics Analysis"),
   tabPanel("Overview by time",
@@ -299,7 +347,9 @@ ui1 <- navbarPage(strong("Lyrics Analysis"),
                     label = 'Selected decade of the first word cloud:',
                     time_list,selected = "1970s"),
         selectInput('genre1', 'Genre of the first word cloud:', 
-                    lyrics_list, selected='Folk')
+                    lyrics_list, selected='Folk'),
+        selectInput('metric1','tf/tf_idf:',
+                    c("tf","tf_idf"),selected = 'tf')
 
     ),
     # Main panel for displaying outputs ----
@@ -315,7 +365,9 @@ ui1 <- navbarPage(strong("Lyrics Analysis"),
                     label = "Selected decade of the second word cloud:",
                     time_list,selected = "1980s"),
         selectInput('genre2', 'Genre of the second word cloud', 
-                    lyrics_list, selected='Metal')
+                    lyrics_list, selected='Rock'),
+         selectInput('metric2','tf/tf_idf:',
+                    c("tf","tf_idf"),selected = 'tf')
     ),
     # Main panel for displaying outputs ----
     mainPanel(
@@ -323,22 +375,38 @@ ui1 <- navbarPage(strong("Lyrics Analysis"),
     )
   )))
 ```
-server
-```{r}
+
+```{r server, message=FALSE,warning=FALSE}
 server1 <- function(input, output) {
   output$WC1 <- renderWordcloud2({
-     filter(word_tibble_c_tg_tfidf, 
-          tg == paste(input$decade3,input$genre1,sep = "-")) %>%
-      select(word,tf) %>%
-      slice(1:75) %>%
-      wordcloud2(size=0.7, rotateRatio=0.2)
+    if(input$metric1 == "tf"){ 
+      filter(word_tibble_c_tg_tfidf, 
+            tg == paste(input$decade3,input$genre1,sep = "-")) %>%
+        select(word,tf) %>%
+        slice(1:75) %>%
+        wordcloud2(size=0.7, rotateRatio=0.2)}
+    else{
+      filter(word_tibble_c_tg_tfidf, 
+            tg == paste(input$decade3,input$genre1,sep = "-")) %>%
+        select(word,tf_idf) %>%
+        slice(1:75) %>%
+        wordcloud2(size=0.7, rotateRatio=0.2)
+    }
   })
   output$WC2 <- renderWordcloud2({
-    filter(word_tibble_c_tg_tfidf, 
-          tg == paste(input$decade4,input$genre2,sep = "-")) %>%
-      select(word,tf) %>%
-      slice(1:75) %>%
-      wordcloud2(size=0.7, rotateRatio=0.2)
+    if(input$metric2 == "tf"){
+      filter(word_tibble_c_tg_tfidf, 
+            tg == paste(input$decade4,input$genre2,sep = "-")) %>%
+        select(word,tf) %>%
+        slice(1:75) %>%
+        wordcloud2(size=0.7, rotateRatio=0.2)}
+    else{
+      filter(word_tibble_c_tg_tfidf, 
+            tg == paste(input$decade4,input$genre2,sep = "-")) %>%
+        select(word,tf_idf) %>%
+        slice(1:75) %>%
+        wordcloud2(size=0.7, rotateRatio=0.2)
+    }
   })
   output$unigram1 <- renderPlotly({
     unigram_tf_idf <- filter(word_tibble_c_time_tfidf,
@@ -371,17 +439,95 @@ server1 <- function(input, output) {
   })
 }
 ```
-shiny
+
 ```{r shiny app, warning=FALSE, message=FALSE}
 shinyApp(ui1, server1)
 ```
-## Including Plots
 
-You can also embed plots, for example:
+  Running the shiny-app, the popular words will change a lot with fixed decade and genre, if in terms of tf_idf. For example, in terms of tf, the most popular word in 1980s R&B lyrics is "love", but in terms of tf_idf, it is "Jerome."
 
-```{r pressure, echo=FALSE}
-plot(pressure)
-cd /Library/Java/JavaVirtualMachines
+## 3. Sentiment Analysis
+```{r preparation for sentiment Analysis, warning = FALSE, message=FALSE}
+word_tibble_c <- word_tibble %>%
+  left_join(dt_lyrics %>% select(id,time,genre), by = "id") %>%
+  na.omit()
+
+word_tibble_c_time_s <- word_tibble_c_time %>%
+  inner_join(get_sentiments("bing"),by  = "word") %>%
+  inner_join(get_sentiments("nrc"),by  = "word")
+
+word_tibble_c_s <- word_tibble_c %>%
+  inner_join(get_sentiments("bing"),by  = "word") %>%
+  inner_join(get_sentiments("nrc"),by  = "word")
+
+word_tibble_c_s <- rename(word_tibble_c_s,
+                          "bing" = "sentiment.x",
+                          "nrc" = "sentiment.y")
+```
+### a. Proportion of positive and negative lyrics per decade: with bing
+```{r bing proportion}
+sa_bing_time <- word_tibble_c_s %>%
+  group_by(time,bing) %>%
+  summarise(n = n()) %>%
+  spread(bing,n) %>%
+  mutate(total = positive+negative,
+         positive_percentage = positive/total*100,
+         negative_percentage = negative/total*100) %>%
+  select(-negative,-positive) %>%
+  pivot_longer(positive_percentage:negative_percentage,names_to = "bing",values_to = "percentage")
+
+g16 <- sa_bing_time %>%
+  filter(time != "Other") %>%
+  ggplot(mapping = aes(x = time,y = percentage))+
+  geom_col(mapping = aes(fill = bing))+
+  labs(x = "Time", y = "Proportion of different sentiment(bing) each decade",
+       title = "Proportion of positive and negative lyrics per decade: with bing")+
+  theme_light()+
+  theme(plot.title = element_text(hjust = 0.5))
+g16
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+  From this plot, we can see that the overall proportion of positive lyrics has decreased and the overall proportion of negative lyrics has increased.
+
+### b. Proportion of positive and negative lyrics per decade: with nrc
+```{r nrc,warning=FALSE,message=FALSE}
+g17 <- word_tibble_c_s %>%
+  select(time,nrc) %>%
+  filter(time !="Other") %>%
+  ggplot(aes(x = time))+
+  geom_bar(aes(fill = nrc),position = "fill")+
+  labs(x = "Time", y = "Proportion of different sentiment(nrc) each decade",
+       title = "Proportion of positive and negative lyrics per decade: with nrc")+
+  theme_light()+
+  theme(plot.title = element_text(hjust = 0.5))
+g17
+```
+
+  From this plot, we can see that the proportion of different sentiments defined by nrc has stayed relatively stable in these decades. The proportion of positive lyrics defined by nrc slightly decreased and the proportion of negative lyrics defined by nrc slightly increased.
+
+### c. Proportion of positive and negative lyrics per decade: with nrc, by genre
+```{r nrc genre,warning=FALSE,message=FALSE}
+g18 <- word_tibble_c_s %>%
+  select(time,nrc,genre) %>%
+  filter(time !="Other") %>%
+  ggplot(aes(x = time))+
+  geom_bar(aes(fill = nrc),position = "fill")+
+  facet_wrap(~genre)+
+  labs(x = "Time", y = "Proportion of different sentiment(nrc) each decade",
+       title = "Proportion of positive and negative lyrics per decade: with nrc")+
+  theme_light()+
+  theme(plot.title = element_text(hjust = 0.5))
+g18
+```
+
+From the plot, we can see that:
+  Country music: in 1980s, nearly 50% of the lyrics expressed disguts and negative emotion;
+  Electronic music: in 1980s, the proportion of negative and surprise lyrics are relatively high compared to the proportion in other decades;
+  Hip-Hop music: the proportion of negative lyrics has decreased over time;
+  Metal music: the proportion of angry and negative lyrics has decreased over time.
+
+
+## Conclusion:
+  1. The music industry is expanding over time. Pop music occupiy more music market recently. More composers will write longer lyrics with more unique words nowadays, compared to the past.
+  2. Lyrics are more encouraging compared to 1970s. People like using songs to express love all the time. Fixed genre and time, popular words measured by tf and tf_idf differ a lot.
+  3. There are more negative emoition in lyrics these days. In 1980s, a relatively high proportion of negative emotion in Country music and Electronic music.
