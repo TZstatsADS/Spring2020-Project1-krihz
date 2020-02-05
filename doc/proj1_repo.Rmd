@@ -1,0 +1,387 @@
+---
+title: "How do songs change in the past 50 years: in a lyric side"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r load libraries, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(tidytext)
+library(plotly)
+library(DT)
+library(tm)
+library(data.table)
+library(scales)
+library(wordcloud2)
+library(gridExtra)
+library(ngram)
+library(shiny)
+library(textdata)
+library(qdap)
+library(wordcloud)
+library(shiny)
+```
+
+# Load the data to be cleaned and processed
+
+```{r}
+# load lyrics data
+load('../data/lyrics.RData') 
+# load artist information
+dt_artist <- fread('../data/artists.csv') 
+lyrics_list <- c("Folk", "R&B", "Electronic", "Jazz", "Indie", "Country", "Rock","Metal", "Pop","Hip-Hop","Other")
+time_list <- c("1970s", "1980s", "1990s", "2000s", "2010s")
+corpus <- VCorpus(VectorSource(dt_lyrics$stemmedwords))
+word_tibble <- tidy(corpus) %>%
+  select(text) %>%
+  mutate(id = row_number()) %>%
+  unnest_tokens(word, text)
+```
+
+# the number of songs change over time
+```{r}
+library(ggplot2)
+dt_lyrics <- dt_lyrics %>%
+  mutate(time = case_when(
+    year >=1970 & year <1980 ~ "1970s",
+    year >=1980 & year <1990 ~ "1980s",
+    year >=1990 & year <2000 ~ "1990s",
+    year >=2000 & year <2010 ~ "2000s",
+    year >=2010  ~ "2010s",
+    year < 1970 ~ "Other"))
+g1 <- dt_lyrics %>%
+  ggplot(mapping = aes(x = time))+
+  geom_bar(mapping = aes(fill = genre))+
+  labs(x = "Time", y = "Totle number of songs each decade",
+       title = "Total number of songs each decade over time")+
+  geom_text(aes(label=as.character(..count..)),stat="count",vjust=-0.5)+
+  theme_light()+
+  theme(plot.title = element_text(hjust = 0.5))
+g1
+```
+# Proportion of different genre change over time
+```{r}
+g2 <- filter(dt_lyrics,year>=1970) %>%
+  group_by(time,genre) %>%
+  summarise(n = n()) %>%
+  left_join(summarise(group_by(dt_lyrics,time),total = n()),by = "time") %>%
+  mutate(proportion = n/total) %>%
+  ggplot(aes(x = time,y = proportion,group = genre)) +
+  geom_line(aes(color = genre)) +
+  labs(x = "Time", y = "Proportion of each genre of music",
+       title = "Proportion of different genre change over time")+
+  theme_light()+
+  theme(plot.title = element_text(hjust = 0.5))
+g2
+```
+# The distribution of length of lyric across time
+```{r}
+word_count <- group_by(word_tibble,id) %>%
+  summarise(count = n()) %>%
+  left_join(select(dt_lyrics,id,time,genre),by = "id") %>%
+  filter(!is.na(time),
+         time!="Other")
+g3 <- ggplot(word_count,aes(x = time, y = count)) +
+  geom_boxplot(aes(color = time)) +
+  facet_wrap(~genre) +
+  labs(x = "Time", y = "Length of lyric",
+       title = "Length of lyric change over time by genre")+
+  theme_light()+
+  theme(plot.title = element_text(hjust = 0.5))
+g3
+```
+
+# Diveriity of word change over time (in term of stemmed word)
+# sina plot
+```{r}
+word_diversity <- word_tibble %>%
+  left_join(select(dt_lyrics,id,time,genre),by = "id") %>%
+  filter(!is.na(time),
+         time!="Other") %>%
+  group_by(id,time,genre) %>%
+  summarise(div = n_distinct(word))
+library(ggforce)
+g4 <- ggplot(word_diversity, aes(x = time, y = div)) +
+  geom_sina(aes(color = time)) +
+  labs(x = "Time", y = "Diversity of word in lyric",
+       title = "Diversity of word in lyric change over time")+
+  theme_light()+
+  theme(plot.title = element_text(hjust = 0.5))
+g4
+```
+# by genre
+```{r}
+g5 <- ggplot(word_diversity, aes(x = time, y = div)) +
+  geom_sina(aes(color = time),size = 0.3) +
+  labs(x = "Time", y = "Diversity of word in lyric",
+       title = "Diversity of word in lyric change over time")+
+  facet_wrap(~genre) +
+  theme_light()+
+  theme(plot.title = element_text(hjust = 0.5))
+g5
+```
+
+# word cloud - overview to each decade
+# calculate tf-tdf
+```{r}
+word_tibble_c <- word_tibble %>%
+  left_join(dt_lyrics %>% select(id,time,genre), by = "id") %>%
+  na.omit()
+
+word_tibble_c_time <- group_by(word_tibble_c,time,word) %>%
+  summarise(n = n())
+word_tibble_c_time_tfidf <- word_tibble_c_time %>%
+  bind_tf_idf(word,time,n) %>%
+  group_by(time) %>%
+  arrange(time,desc(tf_idf)) %>%
+  ungroup()
+
+word_tibble_c_tg <- word_tibble_c %>%
+  left_join(dt_lyrics %>% select(id,genre), by = "id") %>%
+  na.omit() %>%
+  mutate(tg = paste(time,genre,sep = "-")) %>%
+  group_by(tg,word) %>%
+  summarise(n = n())
+
+word_tibble_c_tg_tfidf <- word_tibble_c_tg %>%
+  bind_tf_idf(word,tg,n) %>%
+  group_by(tg) %>%
+  arrange(tg,desc(tf)) %>%
+  ungroup()
+```
+# 1970s
+```{r}
+g6 <- word_tibble_c_time_tfidf %>%
+  filter(time == "1970s") %>%
+  select(word,tf_idf) %>%
+  head(15) %>%
+  mutate(word = fct_reorder(factor(word),tf_idf)) %>%
+  ggplot() + geom_bar(stat = "identity",aes(x = word, y = tf_idf,fill = tf_idf))+
+  coord_flip() +
+  labs(x = "Word", y = "tf_idf",
+       title = "1970s Top Words")+
+  theme_light()+
+  theme(plot.title = element_text(hjust = 0.5))
+g6
+```
+```{r}
+g7 <- word_tibble_c_time_tfidf %>%
+  filter(time == "1970s") %>%
+  select(word,tf_idf) %>%
+  head(75) %>% wordcloud2()
+g7
+```
+# 1980s
+```{r}
+g8 <- word_tibble_c_time_tfidf %>%
+  filter(time == "1980s") %>%
+  select(word,tf_idf) %>%
+  head(15) %>%
+  mutate(word = fct_reorder(factor(word),tf_idf)) %>%
+  ggplot() + geom_bar(stat = "identity",aes(x = word, y = tf_idf,fill = tf_idf))+
+  coord_flip() +
+  labs(x = "Word", y = "tf_idf",
+       title = "1980s Top Words")+
+  theme_light()+
+  theme(plot.title = element_text(hjust = 0.5))
+g8
+```
+```{r}
+g9 <- word_tibble_c_time_tfidf %>%
+  filter(time == "1980s") %>%
+  select(word,tf_idf) %>%
+  head(75) %>% wordcloud2()
+g9
+```
+# 1990s
+```{r}
+g10 <- word_tibble_c_time_tfidf %>%
+  filter(time == "1990s") %>%
+  select(word,tf_idf) %>%
+  head(15) %>%
+  mutate(word = fct_reorder(factor(word),tf_idf)) %>%
+  ggplot() + geom_bar(stat = "identity",aes(x = word, y = tf_idf,fill = tf_idf))+
+  coord_flip() +
+  labs(x = "Word", y = "tf_idf",
+       title = "1990s Top Words")+
+  theme_light()+
+  theme(plot.title = element_text(hjust = 0.5))
+g10
+```
+```{r}
+g11 <- word_tibble_c_time_tfidf %>%
+  filter(time == "1990s") %>%
+  select(word,tf_idf) %>%
+  head(75) %>% wordcloud2()
+g11
+```
+# 2000s
+```{r}
+g12 <- word_tibble_c_time_tfidf %>%
+  filter(time == "2000s") %>%
+  select(word,tf_idf) %>%
+  head(15) %>%
+  mutate(word = fct_reorder(factor(word),tf_idf)) %>%
+  ggplot() + geom_bar(stat = "identity",aes(x = word, y = tf_idf,fill = tf_idf))+
+  coord_flip() +
+  labs(x = "Word", y = "tf_idf",
+       title = "2000s Top Words")+
+  theme_light()+
+  theme(plot.title = element_text(hjust = 0.5))
+g12
+```
+```{r}
+g13 <- word_tibble_c_time_tfidf %>%
+  filter(time == "2000s") %>%
+  select(word,tf_idf) %>%
+  head(75) %>% wordcloud2()
+g13
+```
+# 2010s
+```{r}
+g14 <- word_tibble_c_time_tfidf %>%
+  filter(time == "2010s") %>%
+  select(word,tf_idf) %>%
+  head(15) %>%
+  mutate(word = fct_reorder(factor(word),tf_idf)) %>%
+  ggplot() + geom_bar(stat = "identity",aes(x = word, y = tf_idf,fill = tf_idf))+
+  coord_flip() +
+  labs(x = "Word", y = "tf_idf",
+       title = "2010s Top Words")+
+  theme_light()+
+  theme(plot.title = element_text(hjust = 0.5))
+g14
+```
+```{r}
+g15 <- word_tibble_c_time_tfidf %>%
+  filter(time == "2010s") %>%
+  select(word,tf_idf) %>%
+  head(75) %>% wordcloud2()
+g15
+```
+shiny_app
+UI
+```{r}
+# Define UI for app that draws a histogram ----
+ui1 <- navbarPage(strong("Lyrics Analysis"),
+  tabPanel("Overview by time",
+    titlePanel("Most frequent words in selected decade by tf_idf"),
+    # Sidebar layout with input and output definitions ----
+    # Main panel for displaying outputs ----
+    sidebarLayout(
+      sidebarPanel(
+        selectInput(inputId = "decade1",
+                    label = "Selected decade for the first plot:",
+                    time_list,selected = '1970s'),
+        selectInput(inputId = "decade2",
+                    label = "Selected decade for the second plot:",
+                    time_list,selected = '1980s')
+      ),
+      mainPanel(
+              fluidRow(
+                column(5,plotlyOutput("unigram1")),
+                column(5,plotlyOutput("unigram2"))
+              )
+            )
+        
+  )),
+  
+  tabPanel("Variation by time and genre",
+           # Sidebar layout with input and output definitions ----
+    sidebarLayout(
+      # Sidebar panel for inputs ----
+      sidebarPanel(
+        selectInput(inputId = 'decade3',
+                    label = 'Selected decade of the first word cloud:',
+                    time_list,selected = "1970s"),
+        selectInput('genre1', 'Genre of the first word cloud:', 
+                    lyrics_list, selected='Folk')
+
+    ),
+    # Main panel for displaying outputs ----
+    mainPanel(
+      wordcloud2Output(outputId = "WC1", height = "300")
+    )
+  ),
+  hr(),
+  sidebarLayout(
+      # Sidebar panel for inputs ----
+      sidebarPanel(
+        selectInput(inputId = "decade4",
+                    label = "Selected decade of the second word cloud:",
+                    time_list,selected = "1980s"),
+        selectInput('genre2', 'Genre of the second word cloud', 
+                    lyrics_list, selected='Metal')
+    ),
+    # Main panel for displaying outputs ----
+    mainPanel(
+      wordcloud2Output(outputId = "WC2", height = "300")
+    )
+  )))
+```
+server
+```{r}
+server1 <- function(input, output) {
+  output$WC1 <- renderWordcloud2({
+     filter(word_tibble_c_tg_tfidf, 
+          tg == paste(input$decade3,input$genre1,sep = "-")) %>%
+      select(word,tf) %>%
+      slice(1:75) %>%
+      wordcloud2(size=0.7, rotateRatio=0.2)
+  })
+  output$WC2 <- renderWordcloud2({
+    filter(word_tibble_c_tg_tfidf, 
+          tg == paste(input$decade4,input$genre2,sep = "-")) %>%
+      select(word,tf) %>%
+      slice(1:75) %>%
+      wordcloud2(size=0.7, rotateRatio=0.2)
+  })
+  output$unigram1 <- renderPlotly({
+    unigram_tf_idf <- filter(word_tibble_c_time_tfidf,
+                             time == input$decade1) %>%
+      arrange(desc(tf_idf)) %>%
+      mutate(word = as.factor(word),
+             word = fct_reorder(word,desc(tf_idf)))    
+    plot_ly(
+      x = unigram_tf_idf$tf_idf[1:15],
+      y = unigram_tf_idf$word[1:15],
+      name = "Unigram",
+      type = "bar",
+      orientation = 'h'
+    )
+  })
+  output$unigram2 <- renderPlotly({
+    unigram_tf_idf <- filter(word_tibble_c_time_tfidf,
+                             time == input$decade2) %>%
+      arrange(desc(tf_idf)) %>%
+      mutate(word = as.factor(word),
+             word = fct_reorder(word,desc(tf_idf)))
+      
+    plot_ly(
+      x = unigram_tf_idf$tf_idf[1:15],
+      y = unigram_tf_idf$word[1:15],
+      name = "Unigram",
+      type = "bar",
+      orientation = 'h'
+    )
+  })
+}
+```
+shiny
+```{r shiny app, warning=FALSE, message=FALSE}
+shinyApp(ui1, server1)
+```
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+cd /Library/Java/JavaVirtualMachines
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
